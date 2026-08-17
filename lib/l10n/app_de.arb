@@ -1,0 +1,18 @@
+{
+  "appTitle": "ExifGone",
+  "subtitle": "Schütze deine Privatsphäre, bereinige deine Daten.",
+  "startBySelecting": "Wähle ein Foto aus, um zu beginnen",
+  "selectPhoto": "Foto auswählen",
+  "cleanAndShare": "Bereinigen & Teilen",
+  "processing": "Verarbeitung...",
+  "selectAnother": "Anderes Foto auswählen",
+  "deviceLocal": "Alle Vorgänge werden auf Ihrem Gerät ausgeführt.",
+  "cleanedWith": "Mit ExifGone bereinigt ✨",
+  "error": "Fehler: {error}",
+  "settings": "Einstellungen",
+  "language": "Sprache",
+  "systemDefault": "Systemstandard",
+  "english": "Englisch",
+  "turkish": "Türkisch",
+  "german": "Deutsch"
+}

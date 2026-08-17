@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7,22 +6,91 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'l10n/app_localizations.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const ExifGoneApp());
 }
 
-class ExifGoneApp extends StatelessWidget {
+class ExifGoneApp extends StatefulWidget {
   const ExifGoneApp({super.key});
+
+  static void setLocale(BuildContext context, Locale? newLocale) {
+    _ExifGoneAppState? state = context.findAncestorStateOfType<_ExifGoneAppState>();
+    state?.setLocale(newLocale);
+  }
+
+  @override
+  State<ExifGoneApp> createState() => _ExifGoneAppState();
+}
+
+class _ExifGoneAppState extends State<ExifGoneApp> {
+  Locale? _locale;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocale();
+  }
+
+  void _loadLocale() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? languageCode = prefs.getString('language_code');
+    if (languageCode != null && languageCode.isNotEmpty) {
+      setState(() {
+        _locale = Locale(languageCode);
+      });
+    }
+  }
+
+  void setLocale(Locale? locale) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (locale == null) {
+      await prefs.remove('language_code');
+    } else {
+      await prefs.setString('language_code', locale.languageCode);
+    }
+    setState(() {
+      _locale = locale;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ExifGone',
+      debugShowCheckedModeBanner: false,
+      locale: _locale,
+      localizationsDelegates: [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en'), // English
+        Locale('tr'), // Turkish
+        Locale('de'), // German
+      ],
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6366F1),
+          brightness: Brightness.light,
+        ),
       ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6366F1),
+          brightness: Brightness.dark,
+          surface: const Color(0xFF0F172A),
+        ),
+      ),
+      themeMode: ThemeMode.system,
       home: const HomePage(),
     );
   }
@@ -43,7 +111,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _clearCache(); // Clean up old files on startup
+    _clearCache();
   }
 
   Future<void> _clearCache() async {
@@ -54,7 +122,6 @@ class _HomePageState extends State<HomePage> {
         for (var file in files) {
           if (file is File && p.basename(file.path).startsWith('cleaned_')) {
             await file.delete();
-            debugPrint('Deleted cached file: ${file.path}');
           }
         }
       }
@@ -67,15 +134,13 @@ class _HomePageState extends State<HomePage> {
     try {
       final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
-        setState(() {
-          _selectedImage = image;
-        });
+        setState(() => _selectedImage = image);
       }
     } catch (e) {
-      debugPrint('Error picking image: $e');
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to pick image')),
+          SnackBar(content: Text(l10n.error(e.toString())), backgroundColor: Colors.red),
         );
       }
     }
@@ -83,180 +148,277 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _cleanAndShare() async {
     if (_selectedImage == null) return;
-
-    setState(() {
-      _isProcessing = true;
-    });
+    setState(() => _isProcessing = true);
 
     try {
+      final l10n = AppLocalizations.of(context)!;
       final String inputPath = _selectedImage!.path;
       final Directory tempDir = await getTemporaryDirectory();
-      final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-      final String fileName = 'cleaned_$timestamp.jpg';
+      final String fileName = 'cleaned_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final String outputPath = p.join(tempDir.path, fileName);
 
-      // Run image stripping in a background isolate
-      await compute(_stripExifTask, {
-        'inputPath': inputPath,
-        'outputPath': outputPath,
-      });
+      await compute(_stripExifTask, {'inputPath': inputPath, 'outputPath': outputPath});
 
       if (mounted) {
-        // Share the cleaned image
-        await Share.shareXFiles([XFile(outputPath)], text: 'Shared via ExifGone');
-        // Optional: Clear cache after share to keep it extra clean
+        await Share.shareXFiles([XFile(outputPath)], text: l10n.cleanedWith);
         _clearCache();
       }
     } catch (e) {
-      debugPrint('Error processing image: $e');
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
+          SnackBar(content: Text(l10n.error(e.toString())), backgroundColor: Colors.red),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isProcessing = false;
-        });
-      }
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  // Top-level function or static method required for compute
   static void _stripExifTask(Map<String, String> paths) {
-    final String inputPath = paths['inputPath']!;
-    final String outputPath = paths['outputPath']!;
+    final bytes = File(paths['inputPath']!).readAsBytesSync();
+    final image = img.decodeImage(bytes);
+    if (image == null) throw Exception('Resim çözülemedi');
+    final cleanBytes = img.encodeJpg(image, quality: 90);
+    File(paths['outputPath']!).writeAsBytesSync(cleanBytes);
+  }
 
-    final File inputFile = File(inputPath);
-    final Uint8List bytes = inputFile.readAsBytesSync();
+  void _showSettings() {
+    final l10n = AppLocalizations.of(context)!;
+    final currentLocale = Localizations.localeOf(context);
 
-    // Decode the image (this discards EXIF in the Image object)
-    final img.Image? image = img.decodeImage(bytes);
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.settings,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 24),
+              _buildLanguageOption(
+                context,
+                l10n.systemDefault,
+                null,
+                currentLocale.languageCode,
+                isSystem: true,
+              ),
+              _buildLanguageOption(context, l10n.english, const Locale('en'), currentLocale.languageCode),
+              _buildLanguageOption(context, l10n.turkish, const Locale('tr'), currentLocale.languageCode),
+              _buildLanguageOption(context, l10n.german, const Locale('de'), currentLocale.languageCode),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-    if (image == null) {
-      throw Exception('Could not decode image');
-    }
+  Widget _buildLanguageOption(
+    BuildContext context,
+    String title,
+    Locale? locale,
+    String currentCode, {
+    bool isSystem = false,
+  }) {
+    final isSelected = isSystem 
+        ? !AppLocalizations.supportedLocales.any((l) => l.languageCode == currentCode) // This is a bit simplified
+        : currentCode == locale?.languageCode;
 
-    // Re-encode to JPG (this creates a clean file without original metadata)
-    final Uint8List cleanBytes = Uint8List.fromList(img.encodeJpg(image, quality: 90));
-
-    // Save the clean image to the temporary directory
-    final File outputFile = File(outputPath);
-    outputFile.writeAsBytesSync(cleanBytes);
+    return ListTile(
+      leading: Icon(
+        isSystem ? Icons.brightness_auto : Icons.language,
+        color: isSelected ? Theme.of(context).colorScheme.primary : null,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? Theme.of(context).colorScheme.primary : null,
+        ),
+      ),
+      trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary) : null,
+      onTap: () {
+        ExifGoneApp.setLocale(context, locale);
+        Navigator.pop(context);
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar.large(
-            title: const Text(
-              'ExifGone',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            centerTitle: true,
-            backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-          ),
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
+      backgroundColor: colorScheme.surface,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 20),
+              // Settings Icon
+              Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  onPressed: _showSettings,
+                  icon: const Icon(Icons.settings_outlined),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Header
+              Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Image Preview Container
-                  Container(
-                    width: double.infinity,
-                    height: 300,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                        width: 2,
-                      ),
-                    ),
-                    child: _selectedImage != null
-                        ? Image.file(
-                            File(_selectedImage!.path),
-                            fit: BoxFit.cover,
-                          )
-                        : Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.image_outlined,
-                                  size: 64,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No Image Selected',
-                                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                  ),
-                  const SizedBox(height: 32),
-                  // Select Photo Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.tonalIcon(
-                      onPressed: _pickImage,
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('Select Photo'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Clean & Share Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _selectedImage == null || _isProcessing
-                          ? null
-                          : _cleanAndShare,
-                      icon: _isProcessing
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.grey,
-                              ),
-                            )
-                          : const Icon(Icons.auto_fix_high),
-                      label: Text(_isProcessing ? 'Processing...' : 'Clean & Share'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  const Text(
-                    'Your photos stay local. Your privacy matters.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      color: Colors.grey,
-                    ),
+                  Icon(Icons.shield_rounded, size: 32, color: colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Text(
+                    l10n.appTitle,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -1,
+                          color: colorScheme.onSurface,
+                        ),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 8),
+              Text(
+                l10n.subtitle,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 48),
+              
+              // Preview Card
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceVariant.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: colorScheme.outlineVariant.withOpacity(0.5),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _selectedImage != null
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.file(File(_selectedImage!.path), fit: BoxFit.cover),
+                            Position8(
+                              top: 12,
+                              right: 12,
+                              child: IconButton.filled(
+                                onPressed: () => setState(() => _selectedImage = null),
+                                icon: const Icon(Icons.close),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.black54,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_photo_alternate_rounded,
+                                size: 80, color: colorScheme.primary.withOpacity(0.5)),
+                            const SizedBox(height: 16),
+                            Text(
+                              l10n.startBySelecting,
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              
+              const SizedBox(height: 32),
+              
+              // Action Buttons
+              if (_selectedImage == null)
+                SizedBox(
+                  width: double.infinity,
+                  height: 64,
+                  child: FilledButton.icon(
+                    onPressed: _pickImage,
+                    icon: const Icon(Icons.photo_library_rounded),
+                    label: Text(l10n.selectPhoto, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                  ),
+                )
+              else
+                Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 64,
+                      child: FilledButton.icon(
+                        onPressed: _isProcessing ? null : _cleanAndShare,
+                        icon: _isProcessing 
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+                          : const Icon(Icons.auto_fix_high_rounded),
+                        label: Text(_isProcessing ? l10n.processing : l10n.cleanAndShare, 
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _pickImage,
+                      child: Text(l10n.selectAnother),
+                    ),
+                  ],
+                ),
+              
+              const SizedBox(height: 24),
+              Text(
+                l10n.deviceLocal,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                    ),
+              ),
+              const SizedBox(height: 24),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
+}
+
+class Position8 extends StatelessWidget {
+  final double? top, right;
+  final Widget child;
+  const Position8({super.key, this.top, this.right, required this.child});
+  @override
+  Widget build(BuildContext context) => Positioned(top: top, right: right, child: child);
 }

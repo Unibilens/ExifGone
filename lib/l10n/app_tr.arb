@@ -1,0 +1,18 @@
+{
+  "appTitle": "ExifGone",
+  "subtitle": "Gizliliğini koru, verilerini temizle.",
+  "startBySelecting": "Bir fotoğraf seçerek başla",
+  "selectPhoto": "Fotoğraf Seç",
+  "cleanAndShare": "Temizle ve Paylaş",
+  "processing": "Temizleniyor...",
+  "selectAnother": "Başka Bir Fotoğraf Seç",
+  "deviceLocal": "Tüm işlemler cihazında yapılır.",
+  "cleanedWith": "ExifGone ile temizlendi ✨",
+  "error": "Hata: {error}",
+  "settings": "Ayarlar",
+  "language": "Dil",
+  "systemDefault": "Sistem Varsayılanı",
+  "english": "İngilizce",
+  "turkish": "Türkçe",
+  "german": "Almanca"
+}

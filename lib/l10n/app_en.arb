@@ -1,0 +1,18 @@
+{
+  "appTitle": "ExifGone",
+  "subtitle": "Protect your privacy, clean your data.",
+  "startBySelecting": "Start by selecting a photo",
+  "selectPhoto": "Select Photo",
+  "cleanAndShare": "Clean & Share",
+  "processing": "Processing...",
+  "selectAnother": "Select Another Photo",
+  "deviceLocal": "All operations are performed on your device.",
+  "cleanedWith": "Cleaned with ExifGone ✨",
+  "error": "Error: {error}",
+  "settings": "Settings",
+  "language": "Language",
+  "systemDefault": "System Default",
+  "english": "English",
+  "turkish": "Turkish",
+  "german": "German"
+}
