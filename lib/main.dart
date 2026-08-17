@@ -1,7 +1,12 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:share_plus/share_plus.dart';
 
 void main() {
   runApp(const ExifGoneApp());
@@ -33,6 +38,30 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final ImagePicker _picker = ImagePicker();
   XFile? _selectedImage;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _clearCache(); // Clean up old files on startup
+  }
+
+  Future<void> _clearCache() async {
+    try {
+      final Directory tempDir = await getTemporaryDirectory();
+      if (await tempDir.exists()) {
+        final List<FileSystemEntity> files = tempDir.listSync();
+        for (var file in files) {
+          if (file is File && p.basename(file.path).startsWith('cleaned_')) {
+            await file.delete();
+            debugPrint('Deleted cached file: ${file.path}');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error clearing cache: $e');
+    }
+  }
 
   Future<void> _pickImage() async {
     try {
@@ -52,11 +81,69 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _cleanAndShare() {
-    // TODO: Implement EXIF cleaning and sharing
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Processing image...')),
-    );
+  Future<void> _cleanAndShare() async {
+    if (_selectedImage == null) return;
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      final String inputPath = _selectedImage!.path;
+      final Directory tempDir = await getTemporaryDirectory();
+      final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final String fileName = 'cleaned_$timestamp.jpg';
+      final String outputPath = p.join(tempDir.path, fileName);
+
+      // Run image stripping in a background isolate
+      await compute(_stripExifTask, {
+        'inputPath': inputPath,
+        'outputPath': outputPath,
+      });
+
+      if (mounted) {
+        // Share the cleaned image
+        await Share.shareXFiles([XFile(outputPath)], text: 'Shared via ExifGone');
+        // Optional: Clear cache after share to keep it extra clean
+        _clearCache();
+      }
+    } catch (e) {
+      debugPrint('Error processing image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  // Top-level function or static method required for compute
+  static void _stripExifTask(Map<String, String> paths) {
+    final String inputPath = paths['inputPath']!;
+    final String outputPath = paths['outputPath']!;
+
+    final File inputFile = File(inputPath);
+    final Uint8List bytes = inputFile.readAsBytesSync();
+
+    // Decode the image (this discards EXIF in the Image object)
+    final img.Image? image = img.decodeImage(bytes);
+
+    if (image == null) {
+      throw Exception('Could not decode image');
+    }
+
+    // Re-encode to JPG (this creates a clean file without original metadata)
+    final Uint8List cleanBytes = Uint8List.fromList(img.encodeJpg(image, quality: 90));
+
+    // Save the clean image to the temporary directory
+    final File outputFile = File(outputPath);
+    outputFile.writeAsBytesSync(cleanBytes);
   }
 
   @override
@@ -135,9 +222,20 @@ class _HomePageState extends State<HomePage> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _selectedImage == null ? null : _cleanAndShare,
-                      icon: const Icon(Icons.auto_fix_high),
-                      label: const Text('Clean & Share'),
+                      onPressed: _selectedImage == null || _isProcessing
+                          ? null
+                          : _cleanAndShare,
+                      icon: _isProcessing
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.grey,
+                              ),
+                            )
+                          : const Icon(Icons.auto_fix_high),
+                      label: Text(_isProcessing ? 'Processing...' : 'Clean & Share'),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
