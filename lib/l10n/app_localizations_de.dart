@@ -18,7 +18,18 @@ class AppLocalizationsDe extends AppLocalizations {
   String get startBySelecting => 'Wähle ein Foto aus, um zu beginnen';
 
   @override
-  String get selectPhoto => 'Foto auswählen';
+  String get selectPhoto => 'Fotos auswählen';
+
+  @override
+  String photosSelected(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos ausgewählt',
+      one: '1 Foto ausgewählt',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get cleanAndShare => 'Bereinigen & Teilen';

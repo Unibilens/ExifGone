@@ -105,7 +105,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final ImagePicker _picker = ImagePicker();
-  XFile? _selectedImage;
+  List<XFile> _selectedImages = [];
   bool _isProcessing = false;
 
   @override
@@ -130,11 +130,11 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _pickImages() async {
     try {
-      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-      if (image != null) {
-        setState(() => _selectedImage = image);
+      final List<XFile> images = await _picker.pickMultiImage();
+      if (images.isNotEmpty) {
+        setState(() => _selectedImages = images);
       }
     } catch (e) {
       if (mounted) {
@@ -147,20 +147,25 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _cleanAndShare() async {
-    if (_selectedImage == null) return;
+    if (_selectedImages.isEmpty) return;
     setState(() => _isProcessing = true);
 
     try {
       final l10n = AppLocalizations.of(context)!;
-      final String inputPath = _selectedImage!.path;
       final Directory tempDir = await getTemporaryDirectory();
-      final String fileName = 'cleaned_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final String outputPath = p.join(tempDir.path, fileName);
+      final List<XFile> cleanedFiles = [];
 
-      await compute(_stripExifTask, {'inputPath': inputPath, 'outputPath': outputPath});
+      for (var xFile in _selectedImages) {
+        final String inputPath = xFile.path;
+        final String fileName = 'cleaned_${DateTime.now().millisecondsSinceEpoch}_${p.basename(inputPath)}';
+        final String outputPath = p.join(tempDir.path, fileName);
+
+        await compute(_stripExifTask, {'inputPath': inputPath, 'outputPath': outputPath});
+        cleanedFiles.add(XFile(outputPath));
+      }
 
       if (mounted) {
-        await Share.shareXFiles([XFile(outputPath)], text: l10n.cleanedWith);
+        await Share.shareXFiles(cleanedFiles, text: l10n.cleanedWith);
         _clearCache();
       }
     } catch (e) {
@@ -229,7 +234,7 @@ class _HomePageState extends State<HomePage> {
     bool isSystem = false,
   }) {
     final isSelected = isSystem 
-        ? !AppLocalizations.supportedLocales.any((l) => l.languageCode == currentCode) // This is a bit simplified
+        ? !AppLocalizations.supportedLocales.any((l) => l.languageCode == currentCode)
         : currentCode == locale?.languageCode;
 
     return ListTile(
@@ -266,7 +271,6 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 20),
-              // Settings Icon
               Align(
                 alignment: Alignment.topRight,
                 child: IconButton(
@@ -275,7 +279,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -300,7 +303,6 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 48),
               
-              // Preview Card
               Expanded(
                 child: Container(
                   width: double.infinity,
@@ -320,22 +322,48 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: _selectedImage != null
+                  child: _selectedImages.isNotEmpty
                       ? Stack(
-                          fit: StackFit.expand,
                           children: [
-                            Image.file(File(_selectedImage!.path), fit: BoxFit.cover),
-                            Position8(
+                            PageView.builder(
+                              itemCount: _selectedImages.length,
+                              itemBuilder: (context, index) {
+                                return Image.file(
+                                  File(_selectedImages[index].path),
+                                  fit: BoxFit.cover,
+                                );
+                              },
+                            ),
+                            Positioned(
                               top: 12,
                               right: 12,
                               child: IconButton.filled(
-                                onPressed: () => setState(() => _selectedImage = null),
+                                onPressed: () => setState(() => _selectedImages = []),
                                 icon: const Icon(Icons.close),
                                 style: IconButton.styleFrom(
                                   backgroundColor: Colors.black54,
                                 ),
                               ),
                             ),
+                            if (_selectedImages.length > 1)
+                              Positioned(
+                                bottom: 12,
+                                left: 0,
+                                right: 0,
+                                child: Center(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black54,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      l10n.photosSelected(_selectedImages.length),
+                                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                                    ),
+                                  ),
+                                ),
+                              ),
                           ],
                         )
                       : Column(
@@ -358,13 +386,12 @@ class _HomePageState extends State<HomePage> {
               
               const SizedBox(height: 32),
               
-              // Action Buttons
-              if (_selectedImage == null)
+              if (_selectedImages.isEmpty)
                 SizedBox(
                   width: double.infinity,
                   height: 64,
                   child: FilledButton.icon(
-                    onPressed: _pickImage,
+                    onPressed: _pickImages,
                     icon: const Icon(Icons.photo_library_rounded),
                     label: Text(l10n.selectPhoto, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     style: FilledButton.styleFrom(
@@ -393,7 +420,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: _pickImage,
+                      onPressed: _pickImages,
                       child: Text(l10n.selectAnother),
                     ),
                   ],

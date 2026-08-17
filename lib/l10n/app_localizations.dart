@@ -121,8 +121,14 @@ abstract class AppLocalizations {
   /// No description provided for @selectPhoto.
   ///
   /// In en, this message translates to:
-  /// **'Select Photo'**
+  /// **'Select Photos'**
   String get selectPhoto;
+
+  /// No description provided for @photosSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 Photo Selected} other{{count} Photos Selected}}'**
+  String photosSelected(num count);
 
   /// No description provided for @cleanAndShare.
   ///

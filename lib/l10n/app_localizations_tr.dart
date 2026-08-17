@@ -18,7 +18,12 @@ class AppLocalizationsTr extends AppLocalizations {
   String get startBySelecting => 'Bir fotoğraf seçerek başla';
 
   @override
-  String get selectPhoto => 'Fotoğraf Seç';
+  String get selectPhoto => 'Fotoğrafları Seç';
+
+  @override
+  String photosSelected(num count) {
+    return '$count Fotoğraf Seçildi';
+  }
 
   @override
   String get cleanAndShare => 'Temizle ve Paylaş';
