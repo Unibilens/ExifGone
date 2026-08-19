@@ -9,7 +9,7 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'ExifGone';
+  String get appTitle => 'Exifgone';
 
   @override
   String get subtitle => 'Protect your privacy, clean your data.';
@@ -50,6 +50,62 @@ class AppLocalizationsEn extends AppLocalizations {
   String error(Object error) {
     return 'Error: $error';
   }
+
+  @override
+  String get privacyReport => 'Privacy Report';
+
+  @override
+  String privacyScore(Object level, Object score) {
+    return 'Privacy Score: $score% ($level)';
+  }
+
+  @override
+  String get gpsFound => 'GPS location';
+
+  @override
+  String deviceFound(Object device) {
+    return '$device info';
+  }
+
+  @override
+  String get timeFound => 'creation time';
+
+  @override
+  String foundInPhoto(Object details) {
+    return 'Found in this photo: $details.';
+  }
+
+  @override
+  String get summaryReport => 'Summary Report';
+
+  @override
+  String totalAnalysis(Object count) {
+    return '$count photos analyzed';
+  }
+
+  @override
+  String totalGps(Object count) {
+    return '$count GPS locations found';
+  }
+
+  @override
+  String totalDevices(Object count) {
+    return '$count device info found';
+  }
+
+  @override
+  String totalTimes(Object count) {
+    return '$count timestamps found';
+  }
+
+  @override
+  String get critical => 'Critical';
+
+  @override
+  String get fair => 'Fair';
+
+  @override
+  String get good => 'Good';
 
   @override
   String get settings => 'Settings';

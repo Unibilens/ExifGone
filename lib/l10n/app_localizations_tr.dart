@@ -9,7 +9,7 @@ class AppLocalizationsTr extends AppLocalizations {
   AppLocalizationsTr([String locale = 'tr']) : super(locale);
 
   @override
-  String get appTitle => 'ExifGone';
+  String get appTitle => 'Exifgone';
 
   @override
   String get subtitle => 'Gizliliğini koru, verilerini temizle.';
@@ -44,6 +44,62 @@ class AppLocalizationsTr extends AppLocalizations {
   String error(Object error) {
     return 'Hata: $error';
   }
+
+  @override
+  String get privacyReport => 'Gizlilik Analizi';
+
+  @override
+  String privacyScore(Object level, Object score) {
+    return 'Gizlilik Skoru: %$score ($level)';
+  }
+
+  @override
+  String get gpsFound => 'GPS konumu';
+
+  @override
+  String deviceFound(Object device) {
+    return '$device cihaz bilgisi';
+  }
+
+  @override
+  String get timeFound => 'çekim saati';
+
+  @override
+  String foundInPhoto(Object details) {
+    return 'Bu fotoğrafta $details bulundu.';
+  }
+
+  @override
+  String get summaryReport => 'Toplu Özet Raporu';
+
+  @override
+  String totalAnalysis(Object count) {
+    return '$count fotoğraf analiz edildi';
+  }
+
+  @override
+  String totalGps(Object count) {
+    return '$count fotoğrafta konum bulundu';
+  }
+
+  @override
+  String totalDevices(Object count) {
+    return '$count fotoğrafta cihaz bilgisi bulundu';
+  }
+
+  @override
+  String totalTimes(Object count) {
+    return '$count fotoğrafta zaman bilgisi bulundu';
+  }
+
+  @override
+  String get critical => 'Kritik';
+
+  @override
+  String get fair => 'Orta';
+
+  @override
+  String get good => 'İyi';
 
   @override
   String get settings => 'Ayarlar';

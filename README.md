@@ -1,4 +1,4 @@
-# ExifGone
+# Exifgone
 
 ExifGone is a privacy focused Android application built with Flutter that allows users to strip EXIF metadata from their photos before sharing them. Protect your privacy by removing location data, camera settings, and other sensitive information embedded in your images.
 

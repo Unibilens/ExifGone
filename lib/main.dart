@@ -8,6 +8,9 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+import 'package:exif/exif.dart';
+import 'package:flutter/services.dart';
 import 'l10n/app_localizations.dart';
 
 void main() async {
@@ -61,7 +64,7 @@ class _ExifGoneAppState extends State<ExifGoneApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ExifGone',
+      title: 'Exifgone',
       debugShowCheckedModeBanner: false,
       locale: _locale,
       localizationsDelegates: [
@@ -96,6 +99,36 @@ class _ExifGoneAppState extends State<ExifGoneApp> {
   }
 }
 
+class PrivacyAnalysis {
+  final bool hasGps;
+  final String? deviceModel;
+  final bool hasTimestamp;
+  final int score;
+
+  PrivacyAnalysis({
+    required this.hasGps,
+    this.deviceModel,
+    required this.hasTimestamp,
+    required this.score,
+  });
+}
+
+class SummaryAnalysis {
+  final int totalPhotos;
+  final int gpsCount;
+  final int deviceCount;
+  final int timeCount;
+  final int averageScore;
+
+  SummaryAnalysis({
+    required this.totalPhotos,
+    required this.gpsCount,
+    required this.deviceCount,
+    required this.timeCount,
+    required this.averageScore,
+  });
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -107,6 +140,10 @@ class _HomePageState extends State<HomePage> {
   final ImagePicker _picker = ImagePicker();
   List<XFile> _selectedImages = [];
   bool _isProcessing = false;
+  bool _isPressed = false;
+  PrivacyAnalysis? _currentAnalysis;
+  SummaryAnalysis? _summaryAnalysis;
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -120,7 +157,7 @@ class _HomePageState extends State<HomePage> {
       if (await tempDir.exists()) {
         final List<FileSystemEntity> files = tempDir.listSync();
         for (var file in files) {
-          if (file is File && p.basename(file.path).startsWith('cleaned_')) {
+          if (file is File && p.basename(file.path).startsWith('anon_')) {
             await file.delete();
           }
         }
@@ -134,7 +171,15 @@ class _HomePageState extends State<HomePage> {
     try {
       final List<XFile> images = await _picker.pickMultiImage();
       if (images.isNotEmpty) {
-        setState(() => _selectedImages = images);
+        setState(() {
+          _selectedImages = images;
+          _currentIndex = 0;
+        });
+        if (images.length > 1) {
+          _analyzeSummary(images);
+        } else {
+          _analyzeImage(images[0]);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -146,6 +191,68 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _analyzeImage(XFile xFile) async {
+    final bytes = await xFile.readAsBytes();
+    final data = await readExifFromBytes(bytes);
+
+    bool hasGps = data.containsKey('GPS GPSLatitude');
+    String? device = data['Image Model']?.toString() ?? data['Image Make']?.toString();
+    bool hasTimestamp = data.containsKey('Image DateTime') || data.containsKey('EXIF DateTimeOriginal');
+
+    int score = 0;
+    if (hasGps) score += 60;
+    if (device != null) score += 25;
+    if (hasTimestamp) score += 15;
+    if (score > 100) score = 100;
+
+    setState(() {
+      _summaryAnalysis = null;
+      _currentAnalysis = PrivacyAnalysis(
+        hasGps: hasGps,
+        deviceModel: device,
+        hasTimestamp: hasTimestamp,
+        score: score,
+      );
+    });
+  }
+
+  Future<void> _analyzeSummary(List<XFile> images) async {
+    int totalGps = 0;
+    int totalDevices = 0;
+    int totalTimes = 0;
+    int totalScore = 0;
+
+    for (var image in images) {
+      final bytes = await image.readAsBytes();
+      final data = await readExifFromBytes(bytes);
+
+      bool hasGps = data.containsKey('GPS GPSLatitude');
+      bool hasDevice = data.containsKey('Image Model') || data.containsKey('Image Make');
+      bool hasTimestamp = data.containsKey('Image DateTime') || data.containsKey('EXIF DateTimeOriginal');
+
+      if (hasGps) totalGps++;
+      if (hasDevice) totalDevices++;
+      if (hasTimestamp) totalTimes++;
+
+      int score = 0;
+      if (hasGps) score += 60;
+      if (hasDevice) score += 25;
+      if (hasTimestamp) score += 15;
+      totalScore += score;
+    }
+
+    setState(() {
+      _currentAnalysis = null;
+      _summaryAnalysis = SummaryAnalysis(
+        totalPhotos: images.length,
+        gpsCount: totalGps,
+        deviceCount: totalDevices,
+        timeCount: totalTimes,
+        averageScore: (totalScore / images.length).round(),
+      );
+    });
+  }
+
   Future<void> _cleanAndShare() async {
     if (_selectedImages.isEmpty) return;
     setState(() => _isProcessing = true);
@@ -154,10 +261,12 @@ class _HomePageState extends State<HomePage> {
       final l10n = AppLocalizations.of(context)!;
       final Directory tempDir = await getTemporaryDirectory();
       final List<XFile> cleanedFiles = [];
+      const uuid = Uuid();
 
       for (var xFile in _selectedImages) {
         final String inputPath = xFile.path;
-        final String fileName = 'cleaned_${DateTime.now().millisecondsSinceEpoch}_${p.basename(inputPath)}';
+        final String randomId = uuid.v4().split('-').first;
+        final String fileName = 'anon_$randomId.jpg';
         final String outputPath = p.join(tempDir.path, fileName);
 
         await compute(_stripExifTask, {'inputPath': inputPath, 'outputPath': outputPath});
@@ -301,88 +410,126 @@ class _HomePageState extends State<HomePage> {
                       color: colorScheme.onSurfaceVariant,
                     ),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 32),
               
               Expanded(
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceVariant.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: colorScheme.outlineVariant.withOpacity(0.5),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
+                child: AnimatedScale(
+                  scale: _isPressed ? 0.96 : 1.0,
+                  duration: const Duration(milliseconds: 100),
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceVariant.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: colorScheme.outlineVariant.withOpacity(0.5),
+                        width: 1.5,
                       ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: _selectedImages.isNotEmpty
-                      ? Stack(
-                          children: [
-                            PageView.builder(
-                              itemCount: _selectedImages.length,
-                              itemBuilder: (context, index) {
-                                return Image.file(
-                                  File(_selectedImages[index].path),
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                            ),
-                            Positioned(
-                              top: 12,
-                              right: 12,
-                              child: IconButton.filled(
-                                onPressed: () => setState(() => _selectedImages = []),
-                                icon: const Icon(Icons.close),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: Colors.black54,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        splashColor: colorScheme.primary.withOpacity(0.2),
+                        highlightColor: colorScheme.primary.withOpacity(0.1),
+                        onTapDown: (_) => setState(() => _isPressed = true),
+                        onTapCancel: () => setState(() => _isPressed = false),
+                        onTap: () {
+                          setState(() => _isPressed = false);
+                          if (_selectedImages.isEmpty) {
+                            HapticFeedback.mediumImpact();
+                            _pickImages();
+                          }
+                        },
+                        child: _selectedImages.isNotEmpty
+                          ? Stack(
+                              children: [
+                                PageView.builder(
+                                  itemCount: _selectedImages.length,
+                                  onPageChanged: (index) {
+                                    setState(() => _currentIndex = index);
+                                    if (_selectedImages.length == 1) {
+                                      _analyzeImage(_selectedImages[index]);
+                                    }
+                                  },
+                                  itemBuilder: (context, index) {
+                                    return Image.file(
+                                      File(_selectedImages[index].path),
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
                                 ),
-                              ),
-                            ),
-                            if (_selectedImages.length > 1)
-                              Positioned(
-                                bottom: 12,
-                                left: 0,
-                                right: 0,
-                                child: Center(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black54,
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      l10n.photosSelected(_selectedImages.length),
-                                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                                Positioned(
+                                  top: 12,
+                                  right: 12,
+                                  child: IconButton.filled(
+                                    onPressed: () => setState(() {
+                                      _selectedImages = [];
+                                      _currentAnalysis = null;
+                                      _summaryAnalysis = null;
+                                    }),
+                                    icon: const Icon(Icons.close),
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.black54,
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add_photo_alternate_rounded,
-                                size: 80, color: colorScheme.primary.withOpacity(0.5)),
-                            const SizedBox(height: 16),
-                            Text(
-                              l10n.startBySelecting,
-                              style: TextStyle(
-                                color: colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w500,
-                              ),
+                                if (_selectedImages.length > 1)
+                                  Positioned(
+                                    bottom: 12,
+                                    left: 0,
+                                    right: 0,
+                                    child: Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black54,
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          l10n.photosSelected(_selectedImages.length),
+                                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.add_photo_alternate_rounded,
+                                    size: 80, color: colorScheme.primary.withOpacity(0.5)),
+                                const SizedBox(height: 16),
+                                Text(
+                                  l10n.startBySelecting,
+                                  style: TextStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
+              
+              if (_summaryAnalysis != null) ...[
+                const SizedBox(height: 24),
+                _buildSummaryReport(context, l10n),
+              ] else if (_currentAnalysis != null) ...[
+                const SizedBox(height: 24),
+                _buildAnalysisReport(context, l10n),
+              ],
               
               const SizedBox(height: 32),
               
@@ -391,7 +538,10 @@ class _HomePageState extends State<HomePage> {
                   width: double.infinity,
                   height: 64,
                   child: FilledButton.icon(
-                    onPressed: _pickImages,
+                    onPressed: () {
+                      HapticFeedback.mediumImpact();
+                      _pickImages();
+                    },
                     icon: const Icon(Icons.photo_library_rounded),
                     label: Text(l10n.selectPhoto, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     style: FilledButton.styleFrom(
@@ -406,7 +556,10 @@ class _HomePageState extends State<HomePage> {
                       width: double.infinity,
                       height: 64,
                       child: FilledButton.icon(
-                        onPressed: _isProcessing ? null : _cleanAndShare,
+                        onPressed: _isProcessing ? null : () {
+                          HapticFeedback.mediumImpact();
+                          _cleanAndShare();
+                        },
                         icon: _isProcessing 
                           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
                           : const Icon(Icons.auto_fix_high_rounded),
@@ -420,7 +573,10 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: _pickImages,
+                      onPressed: () {
+                        HapticFeedback.mediumImpact();
+                        _pickImages();
+                      },
                       child: Text(l10n.selectAnother),
                     ),
                   ],
@@ -437,6 +593,218 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryReport(BuildContext context, AppLocalizations l10n) {
+    final summary = _summaryAnalysis!;
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    Color statusColor;
+    if (summary.averageScore >= 70) {
+      statusColor = const Color(0xFFEF4444);
+    } else if (summary.averageScore >= 30) {
+      statusColor = const Color(0xFFF59E0B);
+    } else {
+      statusColor = const Color(0xFF10B981);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: statusColor.withOpacity(0.2), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.assessment_rounded, color: statusColor, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.summaryReport,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: statusColor,
+                        fontSize: 16,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    Text(
+                      l10n.totalAnalysis(summary.totalPhotos),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurface.withOpacity(0.5),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '%${summary.averageScore}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: statusColor,
+                      fontSize: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12.0),
+            child: Divider(height: 1, thickness: 0.5),
+          ),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _buildSummaryItem(Icons.location_on, l10n.totalGps(summary.gpsCount), statusColor),
+              _buildSummaryItem(Icons.smartphone, l10n.totalDevices(summary.deviceCount), statusColor),
+              _buildSummaryItem(Icons.access_time_filled, l10n.totalTimes(summary.timeCount), statusColor),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryItem(IconData icon, String text, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color.withOpacity(0.7)),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(fontSize: 11, color: color.withOpacity(0.8), fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnalysisReport(BuildContext context, AppLocalizations l10n) {
+    final analysis = _currentAnalysis!;
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    String statusLabel;
+    Color statusColor;
+    IconData statusIcon;
+
+    if (analysis.score >= 70) {
+      statusLabel = l10n.critical;
+      statusColor = const Color(0xFFEF4444);
+      statusIcon = Icons.gpp_maybe_rounded;
+    } else if (analysis.score >= 30) {
+      statusLabel = l10n.fair;
+      statusColor = const Color(0xFFF59E0B);
+      statusIcon = Icons.privacy_tip_rounded;
+    } else {
+      statusLabel = l10n.good;
+      statusColor = const Color(0xFF10B981);
+      statusIcon = Icons.verified_user_rounded;
+    }
+
+    List<String> details = [];
+    if (analysis.hasGps) details.add(l10n.gpsFound);
+    if (analysis.deviceModel != null) details.add(l10n.deviceFound(analysis.deviceModel!));
+    if (analysis.hasTimestamp) details.add(l10n.timeFound);
+
+    String detailText = details.isEmpty ? "" : l10n.foundInPhoto(details.join(", "));
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: statusColor.withOpacity(0.2), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      statusLabel,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: statusColor,
+                        fontSize: 16,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    Text(
+                      l10n.privacyReport,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurface.withOpacity(0.5),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '%${analysis.score}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: statusColor,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 60,
+                    height: 4,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: analysis.score / 100,
+                        backgroundColor: statusColor.withOpacity(0.2),
+                        valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (detailText.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.0),
+              child: Divider(height: 1, thickness: 0.5),
+            ),
+            Text(
+              detailText,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

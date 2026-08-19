@@ -20,11 +20,21 @@ dependencies:
   path: ^1.9.0
   share_plus: ^10.1.0
   shared_preferences: ^2.2.2
+  uuid: ^4.4.0
+  exif: ^3.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/icon/adaptive-foreground.png"
+  adaptive_icon_background: "#6366F1"
+  adaptive_icon_foreground: "assets/icon/adaptive-foreground.png"
 
 flutter:
   generate: true

@@ -103,7 +103,7 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In en, this message translates to:
-  /// **'ExifGone'**
+  /// **'Exifgone'**
   String get appTitle;
 
   /// No description provided for @subtitle.
@@ -165,6 +165,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Error: {error}'**
   String error(Object error);
+
+  /// No description provided for @privacyReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy Report'**
+  String get privacyReport;
+
+  /// No description provided for @privacyScore.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy Score: {score}% ({level})'**
+  String privacyScore(Object level, Object score);
+
+  /// No description provided for @gpsFound.
+  ///
+  /// In en, this message translates to:
+  /// **'GPS location'**
+  String get gpsFound;
+
+  /// No description provided for @deviceFound.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} info'**
+  String deviceFound(Object device);
+
+  /// No description provided for @timeFound.
+  ///
+  /// In en, this message translates to:
+  /// **'creation time'**
+  String get timeFound;
+
+  /// No description provided for @foundInPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Found in this photo: {details}.'**
+  String foundInPhoto(Object details);
+
+  /// No description provided for @summaryReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Summary Report'**
+  String get summaryReport;
+
+  /// No description provided for @totalAnalysis.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} photos analyzed'**
+  String totalAnalysis(Object count);
+
+  /// No description provided for @totalGps.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} GPS locations found'**
+  String totalGps(Object count);
+
+  /// No description provided for @totalDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} device info found'**
+  String totalDevices(Object count);
+
+  /// No description provided for @totalTimes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} timestamps found'**
+  String totalTimes(Object count);
+
+  /// No description provided for @critical.
+  ///
+  /// In en, this message translates to:
+  /// **'Critical'**
+  String get critical;
+
+  /// No description provided for @fair.
+  ///
+  /// In en, this message translates to:
+  /// **'Fair'**
+  String get fair;
+
+  /// No description provided for @good.
+  ///
+  /// In en, this message translates to:
+  /// **'Good'**
+  String get good;
 
   /// No description provided for @settings.
   ///
